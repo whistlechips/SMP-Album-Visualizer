@@ -5,7 +5,7 @@ A customizable album-focused visualizer for [foobar2000](https://www.foobar2000.
 SMP Album Visualizer presents the currently playing album with album artwork, artist and album information, a track list, current-track and hover indicators, an optional subtitle line, and an animated eight-band RTA-style display.
 
 <!-- SCREENSHOT-01: Main Album Visualizer -->
-<!-- Replace this marker with the primary 16:9 screenshot of the completed panel. -->
+<img width="1022" height="561" alt="image" src="https://github.com/user-attachments/assets/9023cc33-9d2a-484d-826a-8e2dc3207704" />
 
 ## Highlights
 
