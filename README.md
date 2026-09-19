@@ -66,7 +66,8 @@ Hold **Ctrl** while using the mouse wheel over the appropriate text area:
 Font scaling is persisted after a short debounce so repeated wheel movement does not continually write the Property.
 
 <!-- SCREENSHOT-02: Interaction / Context Menu -->
-<!-- A later screenshot can show current-track/hover behavior or the custom Help / Resources menu. -->
+<img width="525" height="275" alt="image" src="https://github.com/user-attachments/assets/5f499ae3-01f7-44fd-b19d-031df291ba56" />
+
 
 ## Album and Track Selection
 
@@ -134,7 +135,8 @@ The complete Property list, defaults, and implementation details are maintained 
 - Current-track centering behavior
 
 <!-- SCREENSHOT-03: SMP Properties -->
-<!-- A later screenshot can show the categorized Properties dialog here. -->
+<img width="682" height="531" alt="image" src="https://github.com/user-attachments/assets/577bafb9-5ac4-4887-bc06-3492fad3268a" />
+
 
 ## Frequency / RTA-Style Display
 
