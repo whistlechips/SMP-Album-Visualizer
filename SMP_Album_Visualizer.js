@@ -1,6 +1,6 @@
 /*
     SMP Album Visualizer - Spider Monkey Panel
-    Version 2.0
+    Release version 156.0
 
     Target:
       foobar2000 1.6.x 32-bit
@@ -29,9 +29,12 @@
 
 'use strict';
 
+// Enable only when diagnosing startup/property issues.
+const DEBUG_LOGGING = false;
+
 window.DefineScript('SMP Album Visualizer', {
     author: 'SMP Album Visualizer Project',
-    version: '155.0',
+    version: '156.0',
     features: {
         grab_focus: true
     }
@@ -465,14 +468,50 @@ for (let i = 0; i < legacyProperties.length; i++) {
     );
 }
 
+// Remove obsolete property keys from the earlier naming scheme.
+// The previous migration mistakenly created properties whose value was the
+// literal sentinel SMP_PROPERTY_MISSING. Remove those placeholders so the
+// current property declarations below can establish their normal defaults.
+function removeObsoleteProperty(name) {
+    try {
+        window.DeleteProperty(name);
+    } catch (e) {
+        // Continue startup if this SMP build does not expose DeleteProperty.
+    }
+}
+
+function removePlaceholderProperty(name) {
+    try {
+        if (String(window.GetProperty(name, '')) === '__SMP_PROPERTY_MISSING__') {
+            window.DeleteProperty(name);
+        }
+    } catch (e) {
+        // The normal property initialization below remains authoritative.
+    }
+}
+
+removeObsoleteProperty('ANIMATION | EQ / frequency bar timer interval (ms)');
+removeObsoleteProperty('ANIMATION | Enable floating lights');
+removeObsoleteProperty('ANIMATION | Number of floating lights (4-100)');
+removeObsoleteProperty('ANIMATION | Show animated frequency bars');
+removeObsoleteProperty('FONTS | Font');
+removeObsoleteProperty('TRACK | Subtitle title format');
+
+removePlaceholderProperty('ANIMATION | EQ / frequency bars timer interval (ms)');
+removePlaceholderProperty('ANIMATION | Floating lights enable');
+removePlaceholderProperty('ANIMATION | Floating lights number (4-100)');
+removePlaceholderProperty('ANIMATION | EQ / frequency bars enable');
+removePlaceholderProperty('FONTS | Track Font');
+removePlaceholderProperty('FORMATS | Subtitle title format');
+
 const P = {
     frequencyBarInterval: normalizeNumericProperty(
-        'ANIMATION | EQ / frequency bar timer interval (ms)',
+        'ANIMATION | EQ / frequency bars timer interval (ms)',
         40
     ),
 
     showFrequencyBars: getSafeProperty(
-        'ANIMATION | Show animated frequency bars',
+        'ANIMATION | EQ / frequency bars enable',
         true
     ),
 
@@ -524,7 +563,27 @@ const P = {
 
     animateBackgroundOverlay: getSafeProperty(
         'BACKGROUND | Animate dark overlay',
-        false
+        true
+    ),
+
+    enableFloatingLights: getSafeProperty(
+        'ANIMATION | Floating lights enable',
+        true
+    ),
+
+    floatingLightSize: normalizeNumericProperty(
+        'ANIMATION | Floating lights size (0.25-2.5)',
+        0.4
+    ),
+
+    floatingLightBrightness: normalizeNumericProperty(
+        'ANIMATION | Floating lights brightness (0.25-5.0)',
+        3
+    ),
+
+    floatingLightCount: normalizeNumericProperty(
+        'ANIMATION | Floating lights number (4-100)',
+        60
     ),
 
     albumText: getSafeProperty(
@@ -578,7 +637,7 @@ const P = {
     ),
 
     fontName: getSafeProperty(
-        'FONTS | Font',
+        'FONTS | Track Font',
         'Roboto Condensed Light'
     ),
 
@@ -658,7 +717,7 @@ const P = {
     ),
 
     subtitleFormat: getSafeProperty(
-        'TRACK | Subtitle title format',
+        'FORMATS | Subtitle title format',
         '%subtitle%'
     )
 };
@@ -735,6 +794,27 @@ P.albumTitleFormat
     )
 };
 
+
+function syncFloatingLightProperties() {
+    const readClamped = function (name, fallback, min, max) {
+        const raw = window.GetProperty(name, String(fallback));
+        const value = Number(String(raw == null ? '' : raw).trim());
+        if (!isFinite(value)) return fallback;
+        return Math.max(min, Math.min(max, value));
+    };
+
+    P.floatingLightSize = readClamped(
+        'ANIMATION | Floating lights size (0.25-2.5)', 0.4, 0.25, 2.5
+    );
+    P.floatingLightBrightness = readClamped(
+        'ANIMATION | Floating lights brightness (0.25-5.0)', 3, 0.25, 5.0
+    );
+    P.floatingLightCount = Math.round(readClamped(
+        'ANIMATION | Floating lights number (4-100)', 60, 4, 100
+    ));
+    floatingLightCount = P.floatingLightCount;
+}
+
 // -----------------------------------------------------------------------------
 // State
 // -----------------------------------------------------------------------------
@@ -758,6 +838,7 @@ let blurredBackgroundW = 0;
 let blurredBackgroundH = 0;
 let blurredBackgroundSource = null;
 let blurredBackgroundRadius = 0;
+let floatingLightAccent = null;
 
 // Cached rounded artwork used by the paint path. Creating GDI bitmaps on
 // every repaint is unnecessary and can put sustained pressure on GDI/GC
@@ -792,6 +873,13 @@ const backgroundOverlayAnimationRange = 40;
 const backgroundOverlayAnimationCycleMs = 30000;
 const backgroundOverlayAnimationIntervalMs = 200;
 let backgroundOverlayTimer = null;
+let floatingLightCount = Math.round(Math.max(4, Math.min(100, P.floatingLightCount)));
+const floatingLightIntervalMs = 100;
+let floatingLightsTimer = null;
+let floatingLights = [];
+let floatingLightsWidth = 0;
+let floatingLightsHeight = 0;
+
 let backgroundOverlayPhase = 0;
 
 let popupMenuActive = false;
@@ -1342,6 +1430,74 @@ function getGradientColour(
     );
 }
 
+function liftFloatingLightColor(color) {
+    if (!color) return null;
+
+    // Preserve the sampled artwork hue, but prevent dark covers from producing
+    // nearly invisible particles. Scale RGB proportionally so the hue is kept;
+    // bright artwork colors are left unchanged. This runs only when artwork
+    // changes, not during the animation timer.
+    const minimumChannel = 178;
+    const peak = Math.max(color.r, color.g, color.b);
+    if (!isFinite(peak) || peak <= 0 || peak >= minimumChannel) {
+        return { r: color.r, g: color.g, b: color.b };
+    }
+
+    const scale = minimumChannel / peak;
+    return {
+        r: Math.min(255, Math.round(color.r * scale)),
+        g: Math.min(255, Math.round(color.g * scale)),
+        b: Math.min(255, Math.round(color.b * scale))
+    };
+}
+
+function sampleFloatingLightAccent(img) {
+    if (!img) return null;
+
+    try {
+        const colours = JSON.parse(img.GetColourSchemeJSON(8));
+        if (!colours || !colours.length) return null;
+
+        let best = null;
+        let bestFrequency = -Infinity;
+        let bestFallback = null;
+        let bestFallbackFrequency = -Infinity;
+
+        for (let i = 0; i < colours.length; i++) {
+            const entry = colours[i];
+            const packed = Number(entry.col);
+            if (!isFinite(packed)) continue;
+
+            // GetColourSchemeJSON returns the color as conventional 0xRRGGBB.
+            // Decode in RGB order; interpreting the low byte as red swaps red
+            // and blue, which makes warm album artwork appear blue.
+            const r = (packed >> 16) & 255;
+            const g = (packed >> 8) & 255;
+            const b = packed & 255;
+            const maxc = Math.max(r, g, b);
+            const minc = Math.min(r, g, b);
+            const saturation = maxc - minc;
+            const frequency = Number(entry.freq || 0);
+
+            if (maxc >= 35 && frequency > bestFallbackFrequency) {
+                bestFallback = { r: r, g: g, b: b };
+                bestFallbackFrequency = frequency;
+            }
+
+            if (maxc < 35 || minc > 238 || saturation < 18) continue;
+
+            if (frequency > bestFrequency) {
+                best = { r: r, g: g, b: b };
+                bestFrequency = frequency;
+            }
+        }
+
+        return best || bestFallback;
+    } catch (e) {
+        return null;
+    }
+}
+
 function sampleArtworkAccent(img) {
     if (!img) return null;
 
@@ -1507,6 +1663,7 @@ function invalidateBlurredBackground() {
     blurredBackgroundH = 0;
     blurredBackgroundSource = null;
     blurredBackgroundRadius = 0;
+    floatingLightAccent = null;
 }
 
 
@@ -1595,6 +1752,18 @@ function rebuildBlurredBackground() {
         blurredBackgroundH = h;
         blurredBackgroundSource = artwork;
         blurredBackgroundRadius = clamp(P.bgBlurRadius, 2, 254);
+
+        // Sample the original album artwork, not the blurred bitmap. Blur and
+        // dark-overlay processing can bias the palette toward blue-violet.
+        // This runs only when the background cache is rebuilt.
+        const dominantArtworkColor = sampleFloatingLightAccent(artwork);
+        const artworkPalette = artworkAccent || sampleArtworkAccent(artwork);
+        const sampledAccent = (
+            dominantArtworkColor ||
+            (artworkPalette && artworkPalette.length ? artworkPalette[0] : null) ||
+            { r: 255, g: 184, b: 96 }
+        );
+        floatingLightAccent = liftFloatingLightColor(sampledAccent);
     } catch (e) {
         invalidateBlurredBackground();
     }
@@ -1892,27 +2061,27 @@ let frequencyBarTransient = null;
 // Height/energy weighting only. These values determine the typical
 // vertical height of each simulated frequency band.
 const frequencyBarEnergy = [
-    1.00,  // 20â€“60 Hz
-    0.90,  // 60â€“120 Hz
-    0.72,  // 120â€“250 Hz
-    0.52,  // 250â€“500 Hz
-    0.34,  // 500 Hzâ€“1 kHz
-    0.18,  // 1â€“2 kHz
-    0.075, // 2â€“5 kHz
-    0.030  // 5â€“20 kHz
+    1.00,  // 20Ã¢â‚¬â€œ60 Hz
+    0.90,  // 60Ã¢â‚¬â€œ120 Hz
+    0.72,  // 120Ã¢â‚¬â€œ250 Hz
+    0.52,  // 250Ã¢â‚¬â€œ500 Hz
+    0.34,  // 500 HzÃ¢â‚¬â€œ1 kHz
+    0.18,  // 1Ã¢â‚¬â€œ2 kHz
+    0.075, // 2Ã¢â‚¬â€œ5 kHz
+    0.030  // 5Ã¢â‚¬â€œ20 kHz
 ];
 
 // Motion only. Lower frequencies have greater inertia and therefore move
 // more slowly; upper frequencies respond progressively faster.
 const frequencyBarMotion = [
-    { inertia: 0.965, variation: 0.28 }, // 20â€“60 Hz: slow, heavy
-    { inertia: 0.945, variation: 0.30 }, // 60â€“120 Hz: somewhat slower
-    { inertia: 0.915, variation: 0.34 }, // 120â€“250 Hz: low-mid
-    { inertia: 0.885, variation: 0.38 }, // 250â€“500 Hz: mid
-    { inertia: 0.855, variation: 0.42 }, // 500 Hzâ€“1 kHz: more active
-    { inertia: 0.820, variation: 0.46 }, // 1â€“2 kHz: quicker
-    { inertia: 0.785, variation: 0.50 }, // 2â€“5 kHz: faster
-    { inertia: 0.745, variation: 0.54 }  // 5â€“20 kHz: fastest
+    { inertia: 0.965, variation: 0.28 }, // 20Ã¢â‚¬â€œ60 Hz: slow, heavy
+    { inertia: 0.945, variation: 0.30 }, // 60Ã¢â‚¬â€œ120 Hz: somewhat slower
+    { inertia: 0.915, variation: 0.34 }, // 120Ã¢â‚¬â€œ250 Hz: low-mid
+    { inertia: 0.885, variation: 0.38 }, // 250Ã¢â‚¬â€œ500 Hz: mid
+    { inertia: 0.855, variation: 0.42 }, // 500 HzÃ¢â‚¬â€œ1 kHz: more active
+    { inertia: 0.820, variation: 0.46 }, // 1Ã¢â‚¬â€œ2 kHz: quicker
+    { inertia: 0.785, variation: 0.50 }, // 2Ã¢â‚¬â€œ5 kHz: faster
+    { inertia: 0.745, variation: 0.54 }  // 5Ã¢â‚¬â€œ20 kHz: fastest
 ];
 
 function initFrequencyBars() {
@@ -2182,8 +2351,6 @@ const FONT_SCALE_STEP = 0.1;
 // Diagnostic logging is disabled in the release build.
 // The debugLog() calls are retained so diagnostic logging can be re-enabled
 // easily if another stability investigation is required.
-const DEBUG_LOGGING = false;
-
 function debugLog(message) {
     if (!DEBUG_LOGGING) return;
     try {
@@ -2675,6 +2842,10 @@ function on_paint_content(gr) {
             L.h + 2,
             P.bgGlow
         );
+
+        // Floating lights stay on the blurred wallpaper layer, behind
+        // the artwork and all foreground text.
+        drawFloatingLights(gr, L.w, L.h);
     } else {
         // Fallback while artwork is loading.
         gr.FillGradRect(
@@ -3599,6 +3770,11 @@ function runHelpLink(url) {
 }
 
 function showPanelProperties() {
+    // Stop floating-light repaints before any other Properties preparation.
+    // Remember whether the animation was active so it can resume afterward.
+    const resumeFloatingLights = !!floatingLightsTimer;
+    stopFloatingLightsAnimation();
+
     debugLog('Properties BEGIN: entering showPanelProperties()');
 
     if (fontRepaintTimer) {
@@ -3635,6 +3811,7 @@ function showPanelProperties() {
     // values changed there so Apply/OK changes take effect without requiring
     // a panel reload.
     syncFontScalesFromProperties();
+    syncFloatingLightProperties();
     debugLog('Properties SYNC: returned from Properties and synchronized font scales; trackScale=' + P.trackScale + ', artistScale=' + P.artistScale);
 
     if (resumeIndicator && fb.IsPlaying && !fb.IsPaused) {
@@ -3647,6 +3824,10 @@ function showPanelProperties() {
 
     if (resumeBackgroundOverlay && P.animateBackgroundOverlay && fb.IsPlaying && !fb.IsPaused) {
         startBackgroundOverlayAnimation();
+    }
+
+    if (resumeFloatingLights && P.enableFloatingLights && fb.IsPlaying && !fb.IsPaused) {
+        startFloatingLightsAnimation();
     }
 
     // Do not force a synchronous full-panel repaint here. The modal dialog
@@ -3667,10 +3848,12 @@ function showPanelConfigure() {
     const resumeFrequency = !!frequencyTimer;
     const resumeIndicator = !!trackIndicatorTimer;
     const resumeBackgroundOverlay = !!backgroundOverlayTimer;
+    const resumeFloatingLights = !!floatingLightsTimer;
 
     stopFrequencyAnimation();
     stopTrackIndicatorBlink();
     stopBackgroundOverlayAnimation();
+    stopFloatingLightsAnimation();
 
     debugLog('Configure CALL: window.ShowConfigureV2()');
 
@@ -3683,6 +3866,7 @@ function showPanelConfigure() {
     }
 
     syncFontScalesFromProperties();
+    syncFloatingLightProperties();
     debugLog('Configure SYNC: returned from Configure and synchronized font scales; trackScale=' + P.trackScale + ', artistScale=' + P.artistScale);
 
     if (resumeIndicator && fb.IsPlaying && !fb.IsPaused) {
@@ -3695,6 +3879,10 @@ function showPanelConfigure() {
 
     if (resumeBackgroundOverlay && P.animateBackgroundOverlay && fb.IsPlaying && !fb.IsPaused) {
         startBackgroundOverlayAnimation();
+    }
+
+    if (resumeFloatingLights && P.enableFloatingLights && fb.IsPlaying && !fb.IsPaused) {
+        startFloatingLightsAnimation();
     }
 
     // See showPanelProperties(): avoid a synchronous full-panel repaint
@@ -3890,6 +4078,122 @@ function on_mouse_rbtn_up(x, y) {
 // -----------------------------------------------------------------------------
 // Background overlay animation
 // -----------------------------------------------------------------------------
+
+
+function randomFloatingLight(y, width, height) {
+    const spark = Math.random() < 0.18;
+    const initialDrift = (Math.random() - 0.5) * 1.4;
+    return {
+        x: Math.random() * Math.max(1, width),
+        y: y == null ? Math.random() * Math.max(1, height) : y,
+        size: spark ? 1.2 + Math.random() * 1.1 : 2.5 + Math.random() * 5.5,
+        speed: 0.25 + Math.random() * 0.8,
+        // Horizontal movement has its own target and change interval per light.
+        // Targets are approached gradually to avoid twitchy, per-frame randomness.
+        drift: initialDrift,
+        driftTarget: initialDrift,
+        driftTicks: 4 + Math.floor(Math.random() * 20),
+        phase: Math.random() * Math.PI * 2,
+        pulse: 0.4 + Math.random() * 0.6,
+        spark: spark,
+        hue: Math.random() < 0.72 ? 0 : 1
+    };
+}
+
+function resetFloatingLights(width, height) {
+    floatingLightsWidth = Math.max(1, width);
+    floatingLightsHeight = Math.max(1, height);
+    floatingLights = [];
+    for (let i = 0; i < floatingLightCount; i++) {
+        floatingLights.push(randomFloatingLight(null, floatingLightsWidth, floatingLightsHeight));
+    }
+}
+
+function drawFloatingLights(gr, width, height) {
+    if (!P.enableFloatingLights) return;
+    if (floatingLights.length !== floatingLightCount ||
+        floatingLightsWidth !== width || floatingLightsHeight !== height) {
+        resetFloatingLights(width, height);
+    }
+    for (let i = 0; i < floatingLights.length; i++) {
+        const p = floatingLights[i];
+        const d = p.size * P.floatingLightSize * (p.spark ? 1 : 1.8);
+        const x = p.x - d / 2;
+        const y = p.y - d / 2;
+        const alpha = Math.max(1, Math.min(255,
+            Math.round((18 + 42 * p.pulse) * P.floatingLightBrightness)
+        ));
+        const accent = floatingLightAccent || { r: 255, g: 184, b: 96 };
+
+        // p.hue selects between the artwork's dominant color and a lighter
+        // tint of that same color. Sparks use warm neutral white, not blue-white.
+        const tint = p.hue ? 0.28 : 0;
+        const r = p.spark ? 255 : Math.round(accent.r + (255 - accent.r) * tint);
+        const g = p.spark ? 244 : Math.round(accent.g + (255 - accent.g) * tint);
+        const b = p.spark ? 226 : Math.round(accent.b + (255 - accent.b) * tint);
+
+        if (!p.spark) {
+            gr.FillEllipse(x - d * 0.65, y - d * 0.65, d * 2.3, d * 2.3,
+                RGBA(r, g, b, Math.max(5, Math.round(alpha * 0.18))));
+        }
+        gr.FillEllipse(x, y, d, d, RGBA(r, g, b, alpha));
+    }
+}
+
+function updateFloatingLights() {
+    if (!P.enableFloatingLights || !floatingLightsTimer) return;
+    if (!fb.IsPlaying || fb.IsPaused) {
+        stopFloatingLightsAnimation();
+        window.Repaint();
+        return;
+    }
+    for (let i = 0; i < floatingLights.length; i++) {
+        const p = floatingLights[i];
+        p.y -= p.speed;
+
+        // Give each light an independent wandering path. Most changes are
+        // moderate; occasional stronger sideways targets create natural bursts.
+        p.driftTicks--;
+        if (p.driftTicks <= 0) {
+            const burst = Math.random() < 0.14;
+            p.driftTarget = burst
+                ? (Math.random() < 0.5 ? -1 : 1) * (1.2 + Math.random() * 1.1)
+                : (Math.random() - 0.5) * 2.2;
+            p.driftTicks = burst
+                ? 3 + Math.floor(Math.random() * 7)
+                : 7 + Math.floor(Math.random() * 20);
+        }
+
+        // Smoothly accelerate/decelerate toward the next target instead of
+        // snapping direction, keeping the motion organic rather than jittery.
+        p.drift += (p.driftTarget - p.drift) * 0.14;
+        p.x += p.drift;
+        p.phase += 0.09;
+        p.pulse = 0.42 + (Math.sin(p.phase) + 1) * 0.29;
+        if (p.x < -8) p.x = floatingLightsWidth + 8;
+        if (p.x > floatingLightsWidth + 8) p.x = -8;
+        if (p.y < -12) {
+            floatingLights[i] = randomFloatingLight(
+                floatingLightsHeight + Math.random() * 16,
+                floatingLightsWidth, floatingLightsHeight
+            );
+        }
+    }
+    window.Repaint();
+}
+
+function startFloatingLightsAnimation() {
+    if (!P.enableFloatingLights || floatingLightsTimer || 
+        !fb.IsPlaying || fb.IsPaused) return;
+    floatingLightsTimer = window.SetInterval(updateFloatingLights, floatingLightIntervalMs);
+}
+
+function stopFloatingLightsAnimation() {
+    if (floatingLightsTimer) {
+        window.ClearInterval(floatingLightsTimer);
+        floatingLightsTimer = null;
+    }
+}
 
 function getAnimatedBackgroundOverlay() {
     if (
@@ -4103,7 +4407,12 @@ function on_size() {
     rebuildFonts();
     rebuildTitleFormat();
     invalidateArtworkRenderCache();
-    invalidateBlurredBackground();
+
+    // Do not discard the blurred-background bitmap unconditionally here.
+    // rebuildBlurredBackground() already checks panel dimensions, artwork
+    // identity, and blur radius, and rebuilds the cache when any has changed.
+    // Keeping a valid cache avoids an unnecessary expensive blur rebuild
+    // during a size notification that does not actually change the panel.
     centerCurrentTrack();
     window.Repaint();
 }
@@ -4126,6 +4435,7 @@ function on_playback_new_track(handle) {
         startBackgroundOverlayAnimation();
     }
 
+    startFloatingLightsAnimation();
     updateAlbum(handle);
 }
 
@@ -4135,6 +4445,7 @@ function on_playback_stop() {
     stopTrackIndicatorBlink();
     stopFrequencyAnimation();
     stopBackgroundOverlayAnimation();
+    stopFloatingLightsAnimation();
     updateAlbum(null);
 }
 
@@ -4147,11 +4458,13 @@ function on_playback_pause(state) {
         stopTrackIndicatorBlink();
         stopFrequencyAnimation();
         stopBackgroundOverlayAnimation();
+        stopFloatingLightsAnimation();
     } else {
         // Resumed: restart active animations.
         startTrackIndicatorBlink();
         startFrequencyAnimation();
         startBackgroundOverlayAnimation();
+        startFloatingLightsAnimation();
     }
 
     window.Repaint();
@@ -4180,6 +4493,7 @@ function on_script_unload() {
     stopTrackIndicatorBlink();
     stopFrequencyAnimation();
     stopBackgroundOverlayAnimation();
+    stopFloatingLightsAnimation();
     artwork = null;
     invalidateArtworkRenderCache();
     noCoverFallback = null;
@@ -4211,5 +4525,10 @@ if (
 ) {
     startBackgroundOverlayAnimation();
 }
+
+// Start floating lights during initialization too. This matters when the
+// panel is loaded/reloaded while a track is already playing, because no
+// on_playback_new_track callback is guaranteed to follow initialization.
+startFloatingLightsAnimation();
 
 updateAlbum(fb.GetNowPlaying());
