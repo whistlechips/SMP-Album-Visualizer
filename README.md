@@ -2,6 +2,10 @@
 
 A customizable album-focused visualizer for [foobar2000](https://www.foobar2000.org/) using [Spider Monkey Panel](https://theqwertiest.github.io/foo_spider_monkey_panel/).
 
+<!-- SCREENSHOT-01: Main Album Visualizer -->
+<img width="1360" height="642" alt="image" src="https://github.com/user-attachments/assets/2a282862-ebf5-4acf-8e04-642f9a2967dc" />
+
+     
 **Current stable baseline: v157.0.** The project owner has completed runtime testing of this baseline. The script's SMP version declaration, documentation, and release files use `156.0` consistently. The older `Version 2.0` source-header label has been replaced with the actual project release version to avoid ambiguity.
 
 SMP Album Visualizer presents the currently playing album with album artwork, artist and album information, a track list, current-track and hover indicators, an optional subtitle line, an animated eight-band RTA-style display, and optional floating-light/background effects.
@@ -10,6 +14,7 @@ SMP Album Visualizer presents the currently playing album with album artwork, ar
 
 - Added `COLORS | Track number text`, defaulting to the current `COLORS | Track text` value when unset.
 - Added independent `TEXT | Album font scale`, initialized from `TEXT | Artist font scale` when no Album scale has been saved.
+
 
 ## Highlights
 
@@ -53,6 +58,7 @@ The project targets the versions above. Compatibility with other versions is not
 - **Right-click elsewhere:** open Help / Resources, reload, component-folder, Properties, and Configure commands.
 - **Mouse wheel:** scroll the displayed track list.
 - **Ctrl + mouse wheel:** adjust the shared Artist/Album or Track/Subtitle font scale according to the hovered text area.
+<img width="218" height="237" alt="image" src="https://github.com/user-attachments/assets/f9fa8373-f3a7-45f2-8ae2-7a88c4b79014" />
 
 ## Album and track selection
 
@@ -92,6 +98,7 @@ Properties use category prefixes in the Spider Monkey Panel Properties dialog:
 | `BACKGROUND | Animate dark overlay` | `true` |
 
 Floating lights run during active playback and are stopped around Properties/Configure dialogs and when playback is inactive. The complete property list and defaults are in `SMP_Album_Visualizer.md`.
+<img width="682" height="531" alt="image" src="https://github.com/user-attachments/assets/e5e8ebd4-7863-4514-9b75-d73c36742357" />
 
 ## Frequency / RTA-style display
 
