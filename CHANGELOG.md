@@ -1,6 +1,11 @@
+## 157.0 — New properties
+
+- Added `COLORS | Track number text`, defaulting to `COLORS | Track text` when unset.
+- Added independent `TEXT | Album font scale`, initialized from `TEXT | Artist font scale` when unset.
+
 # Changelog
 
-This file records notable project revisions. v156.0 is the current stable baseline; runtime testing of this baseline has been completed by the project owner.
+This file records notable project revisions. v157.0 is the current stable baseline; runtime testing of this baseline has been completed by the project owner.
 
 ## 156.0 — Stable baseline
 

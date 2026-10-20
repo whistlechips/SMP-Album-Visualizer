@@ -1,6 +1,6 @@
 # SMP Album Visualizer — Technical Reference
 
-**Current stable baseline:** v156.0  
+**Current stable baseline:** v157.0  
 **Authoritative implementation:** `SMP_Album_Visualizer.js`  
 **Target:** foobar2000 1.6.x (32-bit) / Spider Monkey Panel 1.6.1
 
@@ -203,3 +203,9 @@ The script's top comment also identifies release `156.0`. Keep `README.md`, `CHA
 ---
 
 **End of v156.0 technical reference.**
+
+
+## v157.0 — New properties
+
+- `COLORS | Track number text`: controls the color used for track numbers. If no value is stored, it defaults to the value of `COLORS | Track text`.
+- `TEXT | Album font scale`: independently controls Album title font size. If no value is stored, it initializes from `TEXT | Artist font scale`; after initialization, the values are independent.

@@ -1,6 +1,6 @@
 /*
     SMP Album Visualizer - Spider Monkey Panel
-    Release version 156.0
+    Release version 157.0
 
     Target:
       foobar2000 1.6.x 32-bit
@@ -34,7 +34,7 @@ const DEBUG_LOGGING = false;
 
 window.DefineScript('SMP Album Visualizer', {
     author: 'SMP Album Visualizer Project',
-    version: '156.0',
+    version: '157.0',
     features: {
         grab_focus: true
     }
@@ -616,6 +616,11 @@ const P = {
         '215,214,220,255'
     ),
 
+    trackNumberText: getSafeProperty(
+        'COLORS | Track number text',
+        getSafeProperty('COLORS | Track text', '215,214,220,255')
+    ),
+
     currentTrackBackgroundColor: getSafeProperty(
         'COLORS | Current track background color',
         '255,255,255,70'
@@ -701,6 +706,11 @@ const P = {
         '1.14'
     ),
 
+    albumScale: getSafeProperty(
+        'TEXT | Album font scale',
+        getSafeProperty('TEXT | Artist font scale', '1.14')
+    ),
+
     trackScale: getSafeProperty(
         'TEXT | Track font scale',
         '0.90'
@@ -753,6 +763,10 @@ P.artistScale = normalizeFontScaleProperty(
     'TEXT | Artist font scale',
     1.14
 );
+P.albumScale = normalizeFontScaleProperty(
+    'TEXT | Album font scale',
+    P.artistScale
+);
 P.trackScale = normalizeFontScaleProperty(
     'TEXT | Track font scale',
     0.90
@@ -764,6 +778,7 @@ P.trackScale = normalizeFontScaleProperty(
 P.bgGlow = parseRGBAProperty(P.bgGlow, RGBA(36,31,54,42));
 P.bgOverlay = parseRGBAProperty(P.bgOverlay, RGBA(0,0,0,125));
 P.trackText = parseRGBAProperty(P.trackText, RGBA(215,214,220,255));
+P.trackNumberText = parseRGBAProperty(P.trackNumberText, P.trackText);
 P.subtitleText = parseRGBAProperty(P.subtitleText, RGBA(185,182,191,255));
 P.mutedText = parseRGBAProperty(P.mutedText, RGBA(130,128,137,255));
 P.artistText = parseRGBAProperty(P.artistText, RGBA(248,248,249,255));
@@ -961,7 +976,7 @@ function rebuildFonts() {
     );
 
     const albumSize = clamp(
-        13.0 * scale * P.artistScale,
+        13.0 * scale * P.albumScale,
         9,
         36
     );
@@ -2383,6 +2398,7 @@ function requestFontRepaint(reason) {
 function scheduleFontScaleSave(propertyKey, value) {
     const propertyNames = {
         artistScale: 'TEXT | Artist font scale',
+        albumScale: 'TEXT | Album font scale',
         trackScale: 'TEXT | Track font scale'
     };
 
@@ -2409,6 +2425,7 @@ function flushFontScaleSave() {
 
     debugLog('Font property SAVE FLUSH BEGIN');
     window.SetProperty('TEXT | Artist font scale', String(P.artistScale));
+    window.SetProperty('TEXT | Album font scale', String(P.albumScale));
     window.SetProperty('TEXT | Track font scale', String(P.trackScale));
     debugLog('Font property SAVE FLUSH END: trackScale=' + P.trackScale + ', artistScale=' + P.artistScale);
 }
@@ -2450,6 +2467,11 @@ function adjustFontScale(propertyKey, delta) {
         maxScale = getArtistMaxScale();
     }
 
+    if (propertyKey === 'albumScale') {
+        const panelScale = clamp(Math.max(1, window.Height) / 250, 0.70, 2.80);
+        maxScale = Math.min(FONT_SCALE_MAX, 36 / (13.0 * panelScale));
+    }
+
     if (propertyKey === 'trackScale') {
         const panelScale = clamp(
             Math.max(1, window.Height) / 250,
@@ -2460,7 +2482,9 @@ function adjustFontScale(propertyKey, delta) {
         // The Track font itself is capped at 30 px. Because Subtitle
         // follows this same scale, the shared scale must stop when the
         // Track font reaches that cap.
-        const trackMaxScale = 30 / (11.0 * panelScale);
+        albumScale = clamp(albumScale, FONT_SCALE_MIN, Math.min(FONT_SCALE_MAX, 36 / (13.0 * panelScale)));
+
+    const trackMaxScale = 30 / (11.0 * panelScale);
 
         maxScale = Math.min(
             FONT_SCALE_MAX,
@@ -2495,22 +2519,32 @@ function adjustFontScale(propertyKey, delta) {
 function syncFontScalesFromProperties() {
     const propertyNames = {
         artistScale: 'TEXT | Artist font scale',
+        albumScale: 'TEXT | Album font scale',
         trackScale: 'TEXT | Track font scale'
     };
 
     const artistRaw = window.GetProperty(propertyNames.artistScale, String(P.artistScale));
+    const albumRaw = window.GetProperty(propertyNames.albumScale, String(P.albumScale));
     const trackRaw = window.GetProperty(propertyNames.trackScale, String(P.trackScale));
 
     const artistText = String(artistRaw == null ? '' : artistRaw).trim();
+    const albumText = String(albumRaw == null ? '' : albumRaw).trim();
     const trackText = String(trackRaw == null ? '' : trackRaw).trim();
 
     let artistScale = Number(artistText);
+    let albumScale = Number(albumText);
     let trackScale = Number(trackText);
 
     if (artistText === '' || !isFinite(artistScale)) {
         debugLog('Font scale property INVALID after dialog: ' + propertyNames.artistScale + ' raw="' + artistText + '" fallback=' + P.artistScale);
         artistScale = P.artistScale;
         window.SetProperty(propertyNames.artistScale, String(artistScale));
+    }
+
+    if (albumText === '' || !isFinite(albumScale)) {
+        debugLog('Font scale property INVALID after dialog: ' + propertyNames.albumScale + ' raw="' + albumText + '" fallback=' + P.albumScale);
+        albumScale = P.albumScale;
+        window.SetProperty(propertyNames.albumScale, String(albumScale));
     }
 
     if (trackText === '' || !isFinite(trackScale)) {
@@ -2541,9 +2575,11 @@ function syncFontScalesFromProperties() {
 
     const changed =
         artistScale !== P.artistScale ||
+        albumScale !== P.albumScale ||
         trackScale !== P.trackScale;
 
     P.artistScale = artistScale;
+    P.albumScale = albumScale;
     P.trackScale = trackScale;
 
     if (changed) {
@@ -2563,23 +2599,18 @@ function rebuildFontPair(propertyKey) {
             52
         );
 
-        const albumSize = clamp(
-            13.0 * scale * P.artistScale,
-            9,
-            36
-        );
-
         fonts.artist = createFont(
             artistSize,
             P.artistWeight,
             P.artistFontName
         );
 
-        fonts.album = createFont(
-            albumSize,
-            0
-        );
+        return;
+    }
 
+    if (propertyKey === 'albumScale') {
+        const albumSize = clamp(13.0 * scale * P.albumScale, 9, 36);
+        fonts.album = createFont(albumSize, 0);
         return;
     }
 
@@ -2639,7 +2670,7 @@ function getFontScaleTarget(x, y) {
             y >= album.y &&
             y < album.y + album.h
         ) {
-            return 'artistScale';
+            return 'albumScale';
         }
     }
 
@@ -2679,9 +2710,8 @@ function getFontScaleTarget(x, y) {
     return null;
 }
 
-// Album and subtitle scales are now tied to Artist and Track scales.
-// Remove the old independent properties from prior revisions.
-window.SetProperty('TEXT | Album font scale', undefined);
+// Album font scale is independently configurable. Existing installations
+// inherit the Artist scale as the default when no Album scale is stored.
 
 // ---------------------------------------------------------------------------
 // Built-in Help / Documentation
@@ -3407,9 +3437,7 @@ function on_paint_content(gr) {
             gr,
             String(number).padStart(2, '0'),
             fonts.track,
-            isCurrent
-                ? P.trackText
-                : P.mutedText,
+            P.trackNumberText,
             L.listX,
             y,
             L.numberW,
