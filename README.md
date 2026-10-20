@@ -71,34 +71,104 @@ The visualizer attempts to build the album list using the following order:
 The implementation also checks that the currently playing handle remains represented in the album track list when metadata queries return an incomplete or inconsistent set.
 
 ## Configuration
+<img width="682" height="531" alt="image" src="https://github.com/user-attachments/assets/e5e8ebd4-7863-4514-9b75-d73c36742357" />
 
-Properties use category prefixes in the Spider Monkey Panel Properties dialog:
-
-- `ANIMATION |`
-- `ARTWORK |`
-- `BACKGROUND |`
-- `COLORS |`
-- `FONTS |`
-- `FORMATS |`
-- `LAYOUT |`
-- `NAVIGATION |`
-- `TEXT |`
-- `TRACK |`
-
-### Important animation defaults
+### ANIMATION
 
 | Property | Default |
-|---|---:|
-| `ANIMATION | EQ / frequency bars timer interval (ms)` | `40` |
-| `ANIMATION | EQ / frequency bars enable` | `true` |
-| `ANIMATION | Floating lights enable` | `true` |
-| `ANIMATION | Floating lights number (4-100)` | `60` |
-| `ANIMATION | Floating lights brightness (0.25-5.0)` | `3` |
-| `ANIMATION | Floating lights size (0.25-2.5)` | `0.4` |
-| `BACKGROUND | Animate dark overlay` | `true` |
+|---|---|
+| `EQ / frequency bars timer interval (ms)` | `40` |
+| `EQ / frequency bars enable` | `true` |
+| `Floating lights enable` | `true` |
+| `Floating lights number (4-100)` | `60` |
+| `Floating lights brightness (0.25-5.0)` | `3` |
+| `Floating lights size (0.25-2.5)` | `0.4` |
+
+### ARTWORK
+
+| Property | Default |
+|---|---|
+| `Artwork area width ratio` | `0.46` |
+| `Artwork border` | `'255,255,255,25'` |
+| `Artwork corner radius ratio` | `0.04` |
+| `Artwork top ratio` | `0.12` |
+| `No cover image path` | `''` |
+| `No cover text` | `'NO COVER'` |
+
+### BACKGROUND
+
+| Property | Default |
+|---|---|
+| `Background - purple tint` | `'36,31,54,42'` |
+| `Background blur radius` | `48` |
+| `Background dark overlay` | `'0,0,0,125'` |
+| `Animate dark overlay` | `true` |
+
+### COLORS
+
+| Property | Default |
+|---|---|
+| `Album text` | `'211,209,216,255'` |
+| `Artist text` | `'248,248,249,255'` |
+| `Font text` | `'215,214,220,255'` |
+| `Muted text` | `'130,128,137,255'` |
+| `Subtitle text` | `'185,182,191,255'` |
+| `Track text` | `'215,214,220,255'` |
+| `Track number text` | Same as `Track text` |
+| `Current track background color` | `'255,255,255,70'` |
+| `Hover background color` | `'255,255,255,70'` |
+
+### FONTS
+
+| Property | Default |
+|---|---|
+| `Artist font` | `'Roboto Condensed Bold'` |
+| `Artist font style` | `1` |
+| `Track Font` | `'Roboto Condensed Light'` |
+
+### FORMATS
+
+| Property | Default |
+|---|---|
+| `Album title format` | `'%album%'` |
+| `Track title format` | Built-in title/artist/loved-track expression |
+| `Subtitle title format` | `'%subtitle%'` |
+
+### LAYOUT
+
+| Property | Default |
+|---|---|
+| `Header height ratio` | `0.105` |
+| `Header left margin` | `0.115` |
+| `Outer margin` | `0.040` |
+| `Track gap ratio` | `0.014` |
+| `Track list left margin` | `0.050` |
+| `Track number width ratio` | `0.040` |
+
+### NAVIGATION
+
+| Property | Default |
+|---|---|
+| `Center current track automatically` | `true` |
+| `Mouse wheel rows` | `3` |
+
+### TEXT
+
+| Property | Default |
+|---|---|
+| `Artist / Album title gap` | `24` |
+| `Artist font scale` | `1.14` |
+| `Album font scale` | Same as `Artist font scale` (`1.14`) |
+| `Track font scale` | `0.90` |
+
+### TRACK
+
+| Property | Default |
+|---|---|
+| `Show subtitle/tag line` | `true` |
+| `Show track count badge` | `true` |
 
 Floating lights run during active playback and are stopped around Properties/Configure dialogs and when playback is inactive. The complete property list and defaults are in `SMP_Album_Visualizer.md`.
-<img width="682" height="531" alt="image" src="https://github.com/user-attachments/assets/e5e8ebd4-7863-4514-9b75-d73c36742357" />
 
 ## Frequency / RTA-style display
 
