@@ -7,6 +7,7 @@ A customizable album-focused visualizer for [foobar2000](https://www.foobar2000.
 
      
 **Current stable baseline: v157.0.** The project owner has completed runtime testing of this baseline. The script's SMP version declaration, documentation, and release files use `156.0` consistently. The older `Version 2.0` source-header label has been replaced with the actual project release version to avoid ambiguity.
+<img width="1010" height="664" alt="image" src="https://github.com/user-attachments/assets/f3b9e683-8b06-4248-b399-530d462bf313" />
 
 SMP Album Visualizer presents the currently playing album with album artwork, artist and album information, a track list, current-track and hover indicators, an optional subtitle line, an animated eight-band RTA-style display, and optional floating-light/background effects.
 
