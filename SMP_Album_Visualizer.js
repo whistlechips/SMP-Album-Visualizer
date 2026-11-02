@@ -1,6 +1,6 @@
 /*
     SMP Album Visualizer - Spider Monkey Panel
-    Release version 157.0
+    Release version 158.0
 
     Target:
       foobar2000 1.6.x 32-bit
@@ -34,7 +34,7 @@ const DEBUG_LOGGING = false;
 
 window.DefineScript('SMP Album Visualizer', {
     author: 'SMP Album Visualizer Project',
-    version: '157.0',
+    version: '158.0',
     features: {
         grab_focus: true
     }
@@ -133,14 +133,71 @@ function textWidth(gr, text, font) {
 function drawText(gr, text, font, colour, x, y, w, h, flags) {
     if (!text || w <= 0 || h <= 0) return;
 
+    const alpha = (colour >>> 24) & 255;
+    const drawX = Math.round(x);
+    const drawY = Math.round(y);
+    const drawW = Math.max(1, Math.round(w));
+    const drawH = Math.max(1, Math.round(h));
+
+    // GDI DrawText does not reliably composite the alpha byte of its colour
+    // argument. For translucent text, render the glyphs to a transparent
+    // off-screen bitmap in an opaque RGB colour, then composite that bitmap
+    // using DrawImage's global alpha. Keep the native fast path for opaque
+    // text, which is the default for most labels.
+    if (alpha < 255) {
+        let textImage = null;
+        let textGraphics = null;
+
+        try {
+            textImage = gdi.CreateImage(drawW, drawH);
+            textGraphics = textImage.GetGraphics();
+
+            const opaqueColour = (colour | 0xFF000000) >>> 0;
+            textGraphics.GdiDrawText(
+                text,
+                font,
+                opaqueColour,
+                0,
+                0,
+                drawW,
+                drawH,
+                flags
+            );
+
+            textImage.ReleaseGraphics(textGraphics);
+            textGraphics = null;
+
+            gr.DrawImage(
+                textImage,
+                drawX,
+                drawY,
+                drawW,
+                drawH,
+                0,
+                0,
+                drawW,
+                drawH,
+                0,
+                alpha
+            );
+            return;
+        } catch (e) {
+            // Preserve legibility if off-screen compositing is unavailable.
+        } finally {
+            if (textGraphics && textImage) {
+                try { textImage.ReleaseGraphics(textGraphics); } catch (e2) {}
+            }
+        }
+    }
+
     gr.GdiDrawText(
         text,
         font,
         colour,
-        Math.round(x),
-        Math.round(y),
-        Math.round(w),
-        Math.round(h),
+        drawX,
+        drawY,
+        drawW,
+        drawH,
         flags
     );
 }
@@ -335,7 +392,8 @@ function drawFormattedTrackTitle(
         );
 
         if (runW > 0) {
-            gr.GdiDrawText(
+            drawText(
+                gr,
                 runText,
                 font,
                 runColour,

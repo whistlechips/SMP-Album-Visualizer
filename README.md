@@ -2,20 +2,14 @@
 
 A customizable album-focused visualizer for [foobar2000](https://www.foobar2000.org/) using [Spider Monkey Panel](https://theqwertiest.github.io/foo_spider_monkey_panel/).
 
-<!-- SCREENSHOT-01: Main Album Visualizer -->
-<img width="1360" height="642" alt="image" src="https://github.com/user-attachments/assets/2a282862-ebf5-4acf-8e04-642f9a2967dc" />
-
-     
-**Current stable baseline: v157.0.** The project owner has completed runtime testing of this baseline. The script's SMP version declaration, documentation, and release files use `156.0` consistently. The older `Version 2.0` source-header label has been replaced with the actual project release version to avoid ambiguity.
-<img width="1010" height="664" alt="image" src="https://github.com/user-attachments/assets/f3b9e683-8b06-4248-b399-530d462bf313" />
+**Current release: v158.0.** This revision includes a fix for alpha-aware text rendering. Runtime testing in foobar2000 is pending.
 
 SMP Album Visualizer presents the currently playing album with album artwork, artist and album information, a track list, current-track and hover indicators, an optional subtitle line, an animated eight-band RTA-style display, and optional floating-light/background effects.
 
-## v157.0 changes
+## v158.0 changes
 
-- Added `COLORS | Track number text`, defaulting to the current `COLORS | Track text` value when unset.
-- Added independent `TEXT | Album font scale`, initialized from `TEXT | Artist font scale` when no Album scale has been saved.
-
+- Fixed alpha handling for text rendered through the shared text renderer, including formatted title runs. Text with alpha below 255 is rendered off-screen and composited at the configured opacity.
+- Existing RGB values and opaque text rendering are unchanged.
 
 ## Highlights
 
@@ -59,7 +53,6 @@ The project targets the versions above. Compatibility with other versions is not
 - **Right-click elsewhere:** open Help / Resources, reload, component-folder, Properties, and Configure commands.
 - **Mouse wheel:** scroll the displayed track list.
 - **Ctrl + mouse wheel:** adjust the shared Artist/Album or Track/Subtitle font scale according to the hovered text area.
-<img width="218" height="237" alt="image" src="https://github.com/user-attachments/assets/f9fa8373-f3a7-45f2-8ae2-7a88c4b79014" />
 
 ## Album and track selection
 
@@ -72,102 +65,31 @@ The visualizer attempts to build the album list using the following order:
 The implementation also checks that the currently playing handle remains represented in the album track list when metadata queries return an incomplete or inconsistent set.
 
 ## Configuration
-<img width="682" height="531" alt="image" src="https://github.com/user-attachments/assets/e5e8ebd4-7863-4514-9b75-d73c36742357" />
 
-### ANIMATION
+Properties use category prefixes in the Spider Monkey Panel Properties dialog:
 
-| Property | Default |
-|---|---|
-| `EQ / frequency bars timer interval (ms)` | `40` |
-| `EQ / frequency bars enable` | `true` |
-| `Floating lights enable` | `true` |
-| `Floating lights number (4-100)` | `60` |
-| `Floating lights brightness (0.25-5.0)` | `3` |
-| `Floating lights size (0.25-2.5)` | `0.4` |
+- `ANIMATION |`
+- `ARTWORK |`
+- `BACKGROUND |`
+- `COLORS |`
+- `FONTS |`
+- `FORMATS |`
+- `LAYOUT |`
+- `NAVIGATION |`
+- `TEXT |`
+- `TRACK |`
 
-### ARTWORK
-
-| Property | Default |
-|---|---|
-| `Artwork area width ratio` | `0.46` |
-| `Artwork border` | `'255,255,255,25'` |
-| `Artwork corner radius ratio` | `0.04` |
-| `Artwork top ratio` | `0.12` |
-| `No cover image path` | `''` |
-| `No cover text` | `'NO COVER'` |
-
-### BACKGROUND
+### Important animation defaults
 
 | Property | Default |
-|---|---|
-| `Background - purple tint` | `'36,31,54,42'` |
-| `Background blur radius` | `48` |
-| `Background dark overlay` | `'0,0,0,125'` |
-| `Animate dark overlay` | `true` |
-
-### COLORS
-
-| Property | Default |
-|---|---|
-| `Album text` | `'211,209,216,255'` |
-| `Artist text` | `'248,248,249,255'` |
-| `Font text` | `'215,214,220,255'` |
-| `Muted text` | `'130,128,137,255'` |
-| `Subtitle text` | `'185,182,191,255'` |
-| `Track text` | `'215,214,220,255'` |
-| `Track number text` | Same as `Track text` |
-| `Current track background color` | `'255,255,255,70'` |
-| `Hover background color` | `'255,255,255,70'` |
-
-### FONTS
-
-| Property | Default |
-|---|---|
-| `Artist font` | `'Roboto Condensed Bold'` |
-| `Artist font style` | `1` |
-| `Track Font` | `'Roboto Condensed Light'` |
-
-### FORMATS
-
-| Property | Default |
-|---|---|
-| `Album title format` | `'%album%'` |
-| `Track title format` | Built-in title/artist/loved-track expression |
-| `Subtitle title format` | `'%subtitle%'` |
-
-### LAYOUT
-
-| Property | Default |
-|---|---|
-| `Header height ratio` | `0.105` |
-| `Header left margin` | `0.115` |
-| `Outer margin` | `0.040` |
-| `Track gap ratio` | `0.014` |
-| `Track list left margin` | `0.050` |
-| `Track number width ratio` | `0.040` |
-
-### NAVIGATION
-
-| Property | Default |
-|---|---|
-| `Center current track automatically` | `true` |
-| `Mouse wheel rows` | `3` |
-
-### TEXT
-
-| Property | Default |
-|---|---|
-| `Artist / Album title gap` | `24` |
-| `Artist font scale` | `1.14` |
-| `Album font scale` | Same as `Artist font scale` (`1.14`) |
-| `Track font scale` | `0.90` |
-
-### TRACK
-
-| Property | Default |
-|---|---|
-| `Show subtitle/tag line` | `true` |
-| `Show track count badge` | `true` |
+|---|---:|
+| `ANIMATION | EQ / frequency bars timer interval (ms)` | `40` |
+| `ANIMATION | EQ / frequency bars enable` | `true` |
+| `ANIMATION | Floating lights enable` | `true` |
+| `ANIMATION | Floating lights number (4-100)` | `60` |
+| `ANIMATION | Floating lights brightness (0.25-5.0)` | `3` |
+| `ANIMATION | Floating lights size (0.25-2.5)` | `0.4` |
+| `BACKGROUND | Animate dark overlay` | `true` |
 
 Floating lights run during active playback and are stopped around Properties/Configure dialogs and when playback is inactive. The complete property list and defaults are in `SMP_Album_Visualizer.md`.
 
@@ -201,3 +123,8 @@ This project is distributed under the **MIT License**. See [`LICENSE`](LICENSE).
 ---
 
 **SMP Album Visualizer for foobar2000 — v156.0**
+
+
+### Color Property Alpha
+
+Color Properties use four comma-separated byte values: `R,G,B,A`, each from 0 to 255. The fourth value controls opacity: `0` is transparent and `255` is fully opaque. Version 158.0 adds alpha-aware compositing for text drawn through the visualizer's shared text renderer, including formatted title runs. Fill, border, and background drawing continue to use their existing GDI color-alpha paths.

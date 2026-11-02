@@ -1,10 +1,10 @@
 # SMP Album Visualizer — Technical Reference
 
-**Current stable baseline:** v157.0  
+**Current release:** v158.0  
 **Authoritative implementation:** `SMP_Album_Visualizer.js`  
 **Target:** foobar2000 1.6.x (32-bit) / Spider Monkey Panel 1.6.1
 
-This document describes the current user-facing properties and behavior. The JavaScript source remains authoritative if a discrepancy is found. The project owner reports runtime testing complete for v156.0.
+This document describes the current user-facing properties and behavior. The JavaScript source remains authoritative if a discrepancy is found. Version 158.0 has not yet been runtime-tested in foobar2000.
 
 ## 1. Overview
 
@@ -160,24 +160,22 @@ Right-click outside the track list opens Help / Documentation and links to Spide
 
 ## 11. Versioning and maintenance
 
-The source version is declared by `window.DefineScript()` and must match the project release version. For v156.0:
+The source version is declared by `window.DefineScript()` and must match the project release version. For v158.0:
 
 ```javascript
 window.DefineScript('SMP Album Visualizer', {
     author: 'SMP Album Visualizer Project',
-    version: '156.0',
+    version: '158.0',
 ```
 
-The script's top comment also identifies release `156.0`. Keep `README.md`, `CHANGELOG.md`, this reference, and release/archive naming synchronized. The JavaScript source is authoritative.
+The script's top comment also identifies release `158.0`. Keep `README.md`, `CHANGELOG.md`, this reference, and release/archive naming synchronized. The JavaScript source is authoritative.
 
 ## 12. Revision notes
 
-### v156.0
+### v158.0
 
-- Declares release version `156.0` in the source header and `window.DefineScript()`.
-- Consolidates Floating Lights defaults and behavior: enabled, 60 particles, brightness `3`, size `0.4`.
-- Uses artwork-derived colors with the RGB brightness floor of `178`.
-- Uses independent horizontal wandering with gradual randomized direction changes and occasional stronger sideways movement.
+- Fixes alpha-aware rendering for text and formatted title runs by compositing off-screen text at the configured alpha.
+- Keeps the existing opaque text path unchanged for performance.
 - Retains 40 ms frequency-bar timer default and optional animated dark overlay.
 - Runtime testing complete per the project owner.
 
@@ -205,7 +203,7 @@ The script's top comment also identifies release `156.0`. Keep `README.md`, `CHA
 **End of v156.0 technical reference.**
 
 
-## v157.0 — New properties
 
-- `COLORS | Track number text`: controls the color used for track numbers. If no value is stored, it defaults to the value of `COLORS | Track text`.
-- `TEXT | Album font scale`: independently controls Album title font size. If no value is stored, it initializes from `TEXT | Artist font scale`; after initialization, the values are independent.
+## 13. Color Property Alpha
+
+Color Properties use four comma-separated byte values: `R,G,B,A`, each from 0 to 255. The fourth value controls opacity: `0` is transparent and `255` is fully opaque. Version 158.0 adds alpha-aware compositing for text drawn through the shared text renderer, including formatted title runs. Fill, border, and background drawing retain their existing color-alpha drawing paths.

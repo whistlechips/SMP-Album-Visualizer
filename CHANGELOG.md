@@ -1,11 +1,14 @@
-## 157.0 — New properties
-
-- Added `COLORS | Track number text`, defaulting to `COLORS | Track text` when unset.
-- Added independent `TEXT | Album font scale`, initialized from `TEXT | Artist font scale` when unset.
-
 # Changelog
 
-This file records notable project revisions. v157.0 is the current stable baseline; runtime testing of this baseline has been completed by the project owner.
+## 158.0 — Color alpha rendering fix
+
+- Fixed translucent text rendering for color Properties by rendering text to an off-screen bitmap and compositing it with the configured alpha. This addresses GDI text drawing paths that do not honor the alpha byte in the supplied color value.
+- Routed formatted track-title color runs through the same alpha-aware text renderer.
+- Existing RGB values and default opaque rendering are unchanged.
+
+## 157.0 — New properties
+
+This file records notable project revisions. v158.0 is the current release; runtime testing is pending.
 
 ## 156.0 — Stable baseline
 
