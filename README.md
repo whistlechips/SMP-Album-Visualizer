@@ -8,6 +8,8 @@ An album-focused Spider Monkey Panel script combining album artwork, a track lis
 
 See [SMP_Album_Visualizer.md](SMP_Album_Visualizer.md) for the complete configuration reference, source defaults and implementation details.
 
+<img width="1020" height="558" alt="image" src="https://github.com/user-attachments/assets/ea2090d1-f2b6-4d1f-bcb2-765e830b961c" />
+
 ## What's new in v159.6
 
 **`FORMATS | Track tooltip format`** lets the tooltip show additional tags independently of the track title and subtitle.
