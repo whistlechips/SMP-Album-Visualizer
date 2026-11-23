@@ -5,7 +5,7 @@
 **Target:** foobar2000 1.6.x (32-bit) / Spider Monkey Panel 1.6.1  
 **Documentation updated:** November 23, 2026
 
-This reference describes the v159.6 implementation. The JavaScript source remains authoritative. The companion [Readme.md](Readme.md) provides installation and a shorter overview.
+This reference describes the v159.6 implementation. The JavaScript source remains authoritative. The companion [README.md](README.md) provides installation and a shorter overview.
 
 ## Overview
 
@@ -27,7 +27,7 @@ The script is self-contained. It does not require an external Markdown viewer fo
 4. Replace the entire existing script with `SMP_Album_Visualizer_v159.6.js`, then apply/save. For a panel configured to load a file, select the extracted file through that existing configuration.
 5. Start playback to populate the album display.
 
-A repository may retain the canonical filename `SMP_Album_Visualizer.js`. If the versioned source is renamed for that purpose, its contents and declared version must still be v159.6. This documentation ZIP contains `Readme.md`, `SMP_Album_Visualizer.md` and `CHANGELOG.md` only; it does not replace the script release ZIP.
+A repository may retain the canonical filename `SMP_Album_Visualizer.js`. If the versioned source is renamed for that purpose, its contents and declared version must still be v159.6. This documentation ZIP contains `README.md`, `SMP_Album_Visualizer.md` and `CHANGELOG.md` only; it does not replace the script release ZIP.
 
 ## Interaction
 
@@ -280,6 +280,6 @@ Suggested runtime checks:
 
 ## Maintenance and provenance
 
-Keep `Readme.md`, `SMP_Album_Visualizer.md`, the source header, the `window.DefineScript()` version and release ZIP naming synchronized. A documentation-only correction does not require changing the script version; these files document **v159.6** and were refreshed on November 23, 2026.
+Keep `README.md`, `SMP_Album_Visualizer.md`, the source header, the `window.DefineScript()` version and release ZIP naming synchronized. A documentation-only correction does not require changing the script version; these files document **v159.6** and were refreshed on November 23, 2026.
 
 The project is an independent community script developed with assistance from OpenAI's ChatGPT. Preserve the repository's existing `AUTHORS.md`, `THIRD_PARTY_NOTICES.md`, `CHANGELOG.md` and `LICENSE` files when preparing a release. The project is licensed under the MIT License; see the repository's `LICENSE` file.
