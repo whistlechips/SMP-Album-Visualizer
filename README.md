@@ -47,7 +47,7 @@ The JavaScript is self-contained. Compatibility with other foobar2000/SMP versio
 ## Installation or upgrade
 
 1. Back up your current script and customized panel settings.
-2. Extract the script release ZIP containing `SMP_Album_Visualizer_v159.6.js`.
+2. Extract the script release ZIP containing `SMP_Album_Visualizer.js`.
 3. Add a Spider Monkey Panel to the foobar2000 layout if needed.
 4. Open **Configure...** by right-clicking outside the track list.
 5. Replace the entire editor contents with the v159.6 script and apply/save. If the panel loads a script file, select the extracted JS file through that existing configuration instead.
