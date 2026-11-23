@@ -4,11 +4,11 @@
 **Documentation updated:** November 23, 2026  
 **Target:** foobar2000 1.6.x (32-bit) / Spider Monkey Panel 1.6.1
 
-This file records documented project changes in reverse version order. Entries for development revisions describe the outcome of each revision, including corrections superseded by later versions. The current implementation is documented in [SMP_Album_Visualizer.md](SMP_Album_Visualizer.md); installation and an overview are in [Readme.md](Readme.md).
+This file records documented project changes in reverse version order. Entries for development revisions describe the outcome of each revision, including corrections superseded by later versions. The current implementation is documented in [SMP_Album_Visualizer.md](SMP_Album_Visualizer.md); installation and an overview are in [README.md](README.md).
 
 ## Documentation update — November 23, 2026
 
-- Updated `SMP_Album_Visualizer.md` and `Readme.md` to describe v159.6 consistently.
+- Updated `SMP_Album_Visualizer.md` and `README.md` to describe v159.6 consistently.
 - Checked all 46 current Property names and source defaults against the v159.6 script.
 - Added the independent tooltip-format instructions, examples, display limits and validation status.
 - Corrected stale version labels and defaults in the older documents.
