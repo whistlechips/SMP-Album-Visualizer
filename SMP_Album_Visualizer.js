@@ -1,6 +1,6 @@
 /*
     SMP Album Visualizer - Spider Monkey Panel
-    Release version 158.0
+    Release version 159.6
 
     Target:
       foobar2000 1.6.x 32-bit
@@ -16,6 +16,7 @@
 
     Interaction:
       - Mouse wheel: scroll album tracks.
+      - Hover a track: show its configurable track tooltip format.
       - Double-click a track: play it.
       - Right-click: reload / properties / edit script.
 
@@ -34,7 +35,7 @@ const DEBUG_LOGGING = false;
 
 window.DefineScript('SMP Album Visualizer', {
     author: 'SMP Album Visualizer Project',
-    version: '158.0',
+    version: '159.6',
     features: {
         grab_focus: true
     }
@@ -130,6 +131,45 @@ function textWidth(gr, text, font) {
 
 
 
+// Translucent text only: oldest entry first, most recently used last.
+// Bitmaps never contain wallpaper or overlays. Alpha and position are applied
+// at composition time. Font objects are compared by identity.
+const translucentTextCache = [];
+const translucentTextCacheMaxBytes = 8 * 1024 * 1024;
+let translucentTextCacheBytes = 0;
+
+function clearTranslucentTextCache() {
+    translucentTextCache.length = 0;
+    translucentTextCacheBytes = 0;
+}
+
+function findTranslucentText(text, font, colour, w, h, flags) {
+    for (let i = 0; i < translucentTextCache.length; i++) {
+        const entry = translucentTextCache[i];
+        if (entry.text === text && entry.font === font &&
+            entry.colour === colour && entry.w === w &&
+            entry.h === h && entry.flags === flags) {
+            translucentTextCache.splice(i, 1);
+            translucentTextCache.push(entry);
+            return entry.image;
+        }
+    }
+    return null;
+}
+
+function rememberTranslucentText(image, text, font, colour, w, h, flags) {
+    const bytes = w * h * 4;
+    if (!isFinite(bytes) || bytes > translucentTextCacheMaxBytes) return;
+    while (translucentTextCache.length &&
+        (translucentTextCache.length >= 32 ||
+         translucentTextCacheBytes + bytes > translucentTextCacheMaxBytes)) {
+        translucentTextCacheBytes -= translucentTextCache.shift().bytes;
+    }
+    translucentTextCache.push({image: image, text: text, font: font,
+        colour: colour, w: w, h: h, flags: flags, bytes: bytes});
+    translucentTextCacheBytes += bytes;
+}
+
 function drawText(gr, text, font, colour, x, y, w, h, flags) {
     if (!text || w <= 0 || h <= 0) return;
 
@@ -149,23 +189,28 @@ function drawText(gr, text, font, colour, x, y, w, h, flags) {
         let textGraphics = null;
 
         try {
-            textImage = gdi.CreateImage(drawW, drawH);
-            textGraphics = textImage.GetGraphics();
-
             const opaqueColour = (colour | 0xFF000000) >>> 0;
-            textGraphics.GdiDrawText(
-                text,
-                font,
-                opaqueColour,
-                0,
-                0,
-                drawW,
-                drawH,
-                flags
-            );
-
-            textImage.ReleaseGraphics(textGraphics);
-            textGraphics = null;
+            // A cache failure must not prevent the existing rendering path.
+            try {
+                textImage = findTranslucentText(text, font, opaqueColour,
+                    drawW, drawH, flags);
+            } catch (cacheError) {
+                clearTranslucentTextCache();
+            }
+            if (!textImage) {
+                textImage = gdi.CreateImage(drawW, drawH);
+                textGraphics = textImage.GetGraphics();
+                textGraphics.GdiDrawText(text, font, opaqueColour,
+                    0, 0, drawW, drawH, flags);
+                textImage.ReleaseGraphics(textGraphics);
+                textGraphics = null;
+                try {
+                    rememberTranslucentText(textImage, text, font, opaqueColour,
+                        drawW, drawH, flags);
+                } catch (cacheError) {
+                    clearTranslucentTextCache();
+                }
+            }
 
             gr.DrawImage(
                 textImage,
@@ -562,6 +607,18 @@ removePlaceholderProperty('ANIMATION | EQ / frequency bars enable');
 removePlaceholderProperty('FONTS | Track Font');
 removePlaceholderProperty('FORMATS | Subtitle title format');
 
+const TRACK_TOOLTIP_PROPERTY = 'FORMATS | Track tooltip format';
+const DEFAULT_TRACK_TOOLTIP_FORMAT =
+    '[Artist: %artist%]$char(10)[Genre: %genre%]$char(10)' +
+    '[Date: %date%]$char(10)[Composer: %composer%]';
+
+// Unlike general Properties, an explicitly empty tooltip format is valid:
+// it disables tooltips and must survive panel reloads.
+function readTrackTooltipFormat() {
+    const raw = window.GetProperty(TRACK_TOOLTIP_PROPERTY, DEFAULT_TRACK_TOOLTIP_FORMAT);
+    return String(raw == null ? '' : raw);
+}
+
 const P = {
     frequencyBarInterval: normalizeNumericProperty(
         'ANIMATION | EQ / frequency bars timer interval (ms)',
@@ -708,6 +765,8 @@ const P = {
         'FORMATS | Album title format',
         '%album%'
     ),
+
+    trackTooltipFormat: readTrackTooltipFormat(),
 
     trackTitleFormat: getSafeProperty(
         'FORMATS | Track title format',
@@ -931,6 +990,207 @@ let artworkAccent = null;
 let scrollOffset = 0;
 let hoveredTrack = -1;
 
+// Draw the tooltip last in this panel's paint callback. Its background and
+// text share the panel's paint cycle, including partial animation repaints.
+let trackTooltip = null;
+let trackTooltipIndex = -1;
+let trackTooltipText = '';
+let trackTooltipSuspended = false;
+let trackTooltipTimer = null;
+let trackTooltipErrorReported = false;
+const trackTooltipDelayMs = 450;
+let trackTooltipTF = null;
+let trackTooltipFormatSource = null;
+
+function syncTrackTooltipFormat() {
+    const source = readTrackTooltipFormat();
+    if (source === trackTooltipFormatSource) return;
+    resetTrackTooltip();
+    P.trackTooltipFormat = source;
+    trackTooltipFormatSource = source;
+    trackTooltipTF = null;
+    trackTooltipErrorReported = false;
+    if (!source.trim()) return;
+    try {
+        trackTooltipTF = fb.TitleFormat(source);
+    } catch (e) {
+        // Keep the user's expression for correction; do not overwrite it.
+        reportTrackTooltipError('Cannot compile Track tooltip format: ' + e);
+    }
+}
+
+function evaluateTrackTooltip(handle) {
+    if (!trackTooltipTF || !handle) return '';
+    try {
+        return plainTrackTooltipText(trackTooltipTF.EvalWithMetadb(handle))
+            .split(/\r?\n/)
+            .map(function (line) { return line.trim(); })
+            .filter(function (line) { return line && line !== '?' && line !== '[?]'; })
+            .join('\n');
+    } catch (e) {
+        reportTrackTooltipError('Cannot evaluate Track tooltip format: ' + e);
+        return '';
+    }
+}
+
+function reportTrackTooltipError(error) {
+    if (trackTooltipErrorReported) return;
+    trackTooltipErrorReported = true;
+    console.log('SMP Album Visualizer v159.6 tooltip error: ' + error);
+}
+
+function plainTrackTooltipText(text) {
+    // Evaluated $rgb() / $transition() output uses ETX-delimited BGR codes.
+    // Keep Unicode, brackets and punctuation in the actual track text.
+    return String(text || '')
+        .replace(/\x03[^\x03]*\x03/g, '')
+        .replace(/\x03[^\x03]*$/, '')
+        .replace(/\$rgb\([^)]*\)/gi, '')
+        .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
+        .trim();
+}
+
+function resetTrackTooltip(repaint) {
+    if (trackTooltipTimer !== null) {
+        window.ClearTimeout(trackTooltipTimer);
+        trackTooltipTimer = null;
+    }
+    const old = trackTooltip;
+    trackTooltip = null;
+    trackTooltipIndex = -1;
+    trackTooltipText = '';
+    if (repaint !== false && old) {
+        if (old.layout) {
+            const r = old.layout;
+            window.RepaintRect(r.x, r.y, r.w + 1, r.h + 1);
+        } else {
+            window.Repaint();
+        }
+    }
+}
+
+function invalidateTrackTooltipRows() {
+    resetTrackTooltip();
+    // Geometry and text will be repopulated by the next normal repaint.
+    rowRects = [];
+}
+
+function withTrackTooltipSuspended(callback) {
+    const previous = trackTooltipSuspended;
+    trackTooltipSuspended = true;
+    resetTrackTooltip();
+    try {
+        return callback();
+    } finally {
+        trackTooltipSuspended = previous;
+    }
+}
+
+function updateTrackTooltip(index, x, y) {
+    if (!trackTooltipTF || trackTooltipSuspended || popupMenuActive || index < 0 ||
+        index >= albumTracks.Count || x < 0 || y < 0 ||
+        x >= window.Width || y >= window.Height) {
+        if (trackTooltipIndex !== -1) resetTrackTooltip();
+        return;
+    }
+
+    // Use painted row geometry for hit testing only. The independent format
+    // is evaluated once per hovered row, never in the animation paint path.
+    const row = rowRects.find(function (r) { return r.index === index; });
+    if (!row || y >= row.tooltipBottom) {
+        if (trackTooltipIndex !== -1) resetTrackTooltip();
+        return;
+    }
+    if (index === trackTooltipIndex) return;
+
+    resetTrackTooltip();
+    const text = evaluateTrackTooltip(albumTracks[index]);
+    // Cache empty results too, avoiding repeated evaluation on mouse movement.
+    trackTooltipIndex = index;
+    trackTooltipText = text;
+    if (!text) return;
+    trackTooltipTimer = window.SetTimeout(function () {
+        trackTooltipTimer = null;
+        if (trackTooltipSuspended || popupMenuActive ||
+            trackTooltipIndex !== index) return;
+        trackTooltip = { text: text, x: x, y: y, layout: null };
+        window.Repaint();
+    }, trackTooltipDelayMs);
+}
+
+function wrapTrackTooltipText(gr, text, font, maxWidth) {
+    const lines = [];
+    String(text).split(/\r?\n/).forEach(function (paragraph) {
+        let line = '';
+        paragraph.split(/\s+/).forEach(function (word) {
+            if (!word) return;
+            const candidate = line ? line + ' ' + word : word;
+            if (textWidth(gr, candidate, font) <= maxWidth) {
+                line = candidate;
+                return;
+            }
+            if (line) lines.push(line);
+            line = '';
+            // Split long unbroken tags/paths without breaking surrogate pairs.
+            Array.from(word).forEach(function (character) {
+                if (line && textWidth(gr, line + character, font) > maxWidth) {
+                    lines.push(line);
+                    line = '';
+                }
+                line += character;
+            });
+        });
+        lines.push(line);
+    });
+    return lines;
+}
+
+function drawTrackTooltip(gr) {
+    if (!trackTooltip || trackTooltipSuspended || popupMenuActive) return;
+    try {
+        const tip = trackTooltip;
+        if (!tip.layout) {
+            const padding = 8;
+            const lineHeight = 18;
+            const maxWidth = Math.min(600, window.Width - 8);
+            if (maxWidth <= padding * 2 || window.Height < lineHeight + padding * 2 + 8) return;
+            const font = createFont(12, 0, 'Segoe UI');
+            const lines = wrapTrackTooltipText(gr, tip.text, font, maxWidth - padding * 2);
+            const maxLines = Math.max(1, Math.floor((window.Height - 8 - padding * 2) / lineHeight));
+            const visible = lines.slice(0, maxLines);
+            if (lines.length > maxLines) {
+                let last = Array.from(visible[maxLines - 1]);
+                while (last.length && textWidth(gr, last.join('') + '\u2026', font) > maxWidth - padding * 2) last.pop();
+                visible[maxLines - 1] = last.join('') + '\u2026';
+            }
+            let width = 0;
+            visible.forEach(function (line) { width = Math.max(width, textWidth(gr, line, font)); });
+            const w = Math.min(maxWidth, Math.ceil(width) + padding * 2);
+            const h = visible.length * lineHeight + padding * 2;
+            const x = clamp(tip.x + 16, 4, Math.max(4, window.Width - w - 4));
+            let y = tip.y + 24;
+            if (y + h > window.Height - 4) y = tip.y - h - 16;
+            y = clamp(y, 4, Math.max(4, window.Height - h - 4));
+            tip.layout = { x: x, y: y, w: w, h: h, font: font,
+                lines: visible, padding: padding, lineHeight: lineHeight };
+        }
+        const r = tip.layout;
+        // An opaque background prevents animation from showing through. This
+        // entire overlay is composed after the artwork, text and animations.
+        gr.FillSolidRect(r.x, r.y, r.w, r.h, RGBA(255, 255, 225, 255));
+        gr.DrawRect(r.x, r.y, r.w, r.h, 1, RGBA(90, 90, 80, 255));
+        r.lines.forEach(function (line, i) {
+            gr.GdiDrawText(line, r.font, RGBA(20, 20, 20, 255),
+                r.x + r.padding, r.y + r.padding + i * r.lineHeight,
+                r.w - r.padding * 2, r.lineHeight,
+                DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+        });
+    } catch (e) {
+        reportTrackTooltipError(e);
+        resetTrackTooltip();
+    }
+}
+
 // Bright leading edge of the current-track indicator blinks while playback
 // is active. It stays visible when paused/stopped.
 let trackIndicatorBlink = true;
@@ -973,6 +1233,7 @@ let albumTitleTF = null;
 let trackTitleTF = null;
 
 function rebuildTitleFormat() {
+    invalidateTrackTooltipRows();
     const albumFormat = P.albumTitleFormat || '%album%';
     const trackFormat = P.trackTitleFormat || '%title%';
 
@@ -1023,6 +1284,7 @@ function createFont(size, style, fontName) {
 }
 
 function rebuildFonts() {
+    clearTranslucentTextCache();
     const h = Math.max(1, window.Height);
 
     const scale = clamp(h / 250, 0.70, 2.80);
@@ -1239,6 +1501,7 @@ function queryAlbum(source, handle) {
 }
 
 function centerCurrentTrack() {
+    invalidateTrackTooltipRows();
     if (
         !P.centerCurrentTrack ||
         !nowPlaying ||
@@ -1380,6 +1643,7 @@ function getNoCoverImage() {
 }
 
 function updateAlbum(handle) {
+    invalidateTrackTooltipRows();
     nowPlaying = handle || null;
 
     scrollOffset = 0;
@@ -2566,6 +2830,7 @@ function adjustFontScale(propertyKey, delta) {
         return;
     }
 
+    invalidateTrackTooltipRows();
     P[propertyKey] = value;
 
     rebuildFontPair(propertyKey);
@@ -2647,6 +2912,7 @@ function syncFontScalesFromProperties() {
 }
 
 function rebuildFontPair(propertyKey) {
+    clearTranslucentTextCache();
     const h = Math.max(1, window.Height);
     const scale = clamp(h / 250, 0.70, 2.80);
 
@@ -2797,9 +3063,32 @@ const HELP = {
             title: 'Track List',
             text:
                 'Tracks display a number, title and optional subtitle/tag line. ' +
-                'Hovering updates the hover indicator. Double-clicking a displayed ' +
+                'Hovering updates the hover indicator. Hover over a track row to ' +
+                'view information from FORMATS | Track tooltip format. Long text ' +
+                'wraps in a tooltip drawn inside this panel; title-format color codes ' +
+                'are omitted. The tooltip stays within the panel edges; exceptionally ' +
+                'long text is shortened if the panel is too small to fit it. ' +
+                'Tooltips appear after a brief hover during playback, pause or stop. ' +
+                'Double-clicking a displayed ' +
                 'track plays it. Right-clicking within the track list retains the ' +
                 'normal foobar2000 track context menu.'
+        },
+        {
+            title: 'Track Tooltip Format',
+            text:
+                'FORMATS | Track tooltip format controls the entire tooltip independently ' +
+                'of the track title, subtitle format and subtitle visibility. The default ' +
+                'shows Artist, Genre, Date and Composer when those fields are available. ' +
+                'Use any foobar2000 title-format expression and custom tags. For example: ' +
+                '[Artist: %artist%]$char(10)[Genre: %genre%]$char(10)' +
+                '[Date: %date%]$char(10)[Composer: %composer%]. ' +
+                '$char(10) inserts a line break. Square brackets hide optional fields; ' +
+                'empty lines and standalone missing-value markers are removed. The format ' +
+                'is evaluated for the hovered track, not necessarily the playing track. ' +
+                'An empty property disables tooltips; an empty result shows no tooltip. ' +
+                'Changes take effect after Properties closes, without restarting. ' +
+                'Compilation/evaluation errors suppress the tooltip and are logged once ' +
+                'per format change; the saved expression is retained for correction.'
         },
         {
             title: 'Subtitle',
@@ -2871,12 +3160,15 @@ const HELP = {
 };
 
 function showHelp() {
+    resetTrackTooltip();
     const text = HELP.sections.map(function (section) {
         return section.title.toUpperCase() + '\n' + section.text;
     }).join('\n\n');
 
     try {
-        fb.ShowPopupMessage(text, HELP.title);
+        withTrackTooltipSuspended(function () {
+            fb.ShowPopupMessage(text, HELP.title);
+        });
     } catch (e) {
         // Help remains non-destructive if the host does not expose the method.
     }
@@ -3396,7 +3688,8 @@ function on_paint_content(gr) {
             y: y,
             w: L.listW,
             h: L.rowH,
-            subtitle: !!subtitle
+            subtitle: !!subtitle,
+            tooltipBottom: Math.min(y + L.rowH, L.listBottom)
         });
 
         // Current-track strip.
@@ -3633,9 +3926,11 @@ function trackAt(x, y) {
 
 function on_paint(gr) {
     on_paint_content(gr);
+    drawTrackTooltip(gr);
 }
 
 function on_mouse_wheel(step) {
+    resetTrackTooltip();
     // Ctrl + wheel adjusts the font area currently under the pointer.
     // Without Ctrl, preserve the original track-list wheel behavior.
     if (utils.IsKeyPressed(0x11)) { // VK_CONTROL
@@ -3679,6 +3974,7 @@ function on_mouse_wheel(step) {
     );
 
     if (old !== scrollOffset) {
+        invalidateTrackTooltipRows();
         window.Repaint();
     }
 }
@@ -3691,6 +3987,7 @@ function on_mouse_move(x, y) {
     mouseY = y;
 
     const index = trackAt(x, y);
+    updateTrackTooltip(index, x, y);
 
     if (index !== hoveredTrack) {
         hoveredTrack = index;
@@ -3706,6 +4003,7 @@ function on_mouse_move(x, y) {
 }
 
 function on_mouse_leave() {
+    resetTrackTooltip();
     if (hoveredTrack !== -1) {
         hoveredTrack = -1;
         window.SetCursor(IDC_ARROW);
@@ -3783,6 +4081,7 @@ function on_mouse_lbtn_up(x, y, mask) {
         y <= L.artY + L.artSize
     ) {
         centerCurrentTrack();
+        window.Repaint();
         return true;
     }
 
@@ -3791,6 +4090,7 @@ function on_mouse_lbtn_up(x, y, mask) {
 
 
 function on_mouse_lbtn_dblclk(x, y) {
+    resetTrackTooltip();
     const index = trackAt(x, y);
 
     if (
@@ -3856,6 +4156,7 @@ function runHelpLink(url) {
 }
 
 function showPanelProperties() {
+    resetTrackTooltip();
     // Stop floating-light repaints before any other Properties preparation.
     // Remember whether the animation was active so it can resume afterward.
     const resumeFloatingLights = !!floatingLightsTimer;
@@ -3886,7 +4187,9 @@ function showPanelProperties() {
     debugLog('Properties CALL: window.ShowProperties()');
 
     try {
-        window.ShowProperties();
+        withTrackTooltipSuspended(function () {
+            window.ShowProperties();
+        });
         debugLog('Properties RETURN: window.ShowProperties() returned normally');
     } catch (e) {
         debugLog('Properties ERROR: ' + e);
@@ -3898,6 +4201,7 @@ function showPanelProperties() {
     // a panel reload.
     syncFontScalesFromProperties();
     syncFloatingLightProperties();
+    syncTrackTooltipFormat();
     debugLog('Properties SYNC: returned from Properties and synchronized font scales; trackScale=' + P.trackScale + ', artistScale=' + P.artistScale);
 
     if (resumeIndicator && fb.IsPlaying && !fb.IsPaused) {
@@ -3926,6 +4230,7 @@ function showPanelProperties() {
 }
 
 function showPanelConfigure() {
+    resetTrackTooltip();
     debugLog('Configure BEGIN: entering showPanelConfigure()');
 
     // Commit any pending wheel change before opening the Configure dialog.
@@ -3944,7 +4249,9 @@ function showPanelConfigure() {
     debugLog('Configure CALL: window.ShowConfigureV2()');
 
     try {
-        window.ShowConfigureV2();
+        withTrackTooltipSuspended(function () {
+            window.ShowConfigureV2();
+        });
         debugLog('Configure RETURN: window.ShowConfigureV2() returned normally');
     } catch (e) {
         debugLog('Configure ERROR: ' + e);
@@ -3953,6 +4260,7 @@ function showPanelConfigure() {
 
     syncFontScalesFromProperties();
     syncFloatingLightProperties();
+    syncTrackTooltipFormat();
     debugLog('Configure SYNC: returned from Configure and synchronized font scales; trackScale=' + P.trackScale + ', artistScale=' + P.artistScale);
 
     if (resumeIndicator && fb.IsPlaying && !fb.IsPaused) {
@@ -3978,6 +4286,7 @@ function showPanelConfigure() {
 }
 
 function showHelpMenu(x, y, flags) {
+    resetTrackTooltip();
     const menu = window.CreatePopupMenu();
 
     // Built-in Help is the first menu item.
@@ -4100,6 +4409,7 @@ function showHelpMenu(x, y, flags) {
 
 
 function on_mouse_rbtn_up(x, y) {
+    resetTrackTooltip();
     const index = trackAt(x, y);
     debugLog('Right-click BEGIN: x=' + x + ' y=' + y + ' trackIndex=' + index);
 
@@ -4489,6 +4799,7 @@ function stopTrackIndicatorBlink() {
 // -----------------------------------------------------------------------------
 
 function on_size() {
+    invalidateTrackTooltipRows();
     fontsDirty = true;
     rebuildFonts();
     rebuildTitleFormat();
@@ -4500,7 +4811,7 @@ function on_size() {
     // Keeping a valid cache avoids an unnecessary expensive blur rebuild
     // during a size notification that does not actually change the panel.
     centerCurrentTrack();
-    window.Repaint();
+    // SMP 1.6.1 repaints after on_size(); do not request a repaint here.
 }
 
 function on_playback_new_track(handle) {
@@ -4557,6 +4868,8 @@ function on_playback_pause(state) {
 }
 
 function on_metadb_changed(handleList) {
+    invalidateTrackTooltipRows();
+    window.Repaint();
     const np = fb.GetNowPlaying();
 
     if (!np || !handleList) return;
@@ -4570,6 +4883,8 @@ function on_metadb_changed(handleList) {
 }
 
 function on_script_unload() {
+    resetTrackTooltip(false);
+    clearTranslucentTextCache();
     if (fontScaleSaveTimer) {
         window.ClearTimeout(fontScaleSaveTimer);
         fontScaleSaveTimer = null;
@@ -4595,6 +4910,7 @@ function on_script_unload() {
 
 rebuildFonts();
 rebuildTitleFormat();
+syncTrackTooltipFormat();
 startTrackIndicatorBlink();
 
 if (
